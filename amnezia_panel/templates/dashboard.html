@@ -1,25 +1,16 @@
 {% extends "base.html" %}
 {% block content %}
-<section class="heading" data-auto-refresh="60000"><div><p class="eyebrow">СЕРВЕР</p><h1>Панель управления</h1><p>Интерфейс awg0 и подключённые клиенты</p><small class="refresh-status" data-refresh-status aria-live="polite"></small></div>
+<section class="heading dashboard-heading" data-auto-refresh="60000"><div><p class="eyebrow">СЕРВЕР</p><h1>Панель управления</h1><p>Интерфейс awg0 и подключённые клиенты</p><small class="refresh-status" data-refresh-status aria-live="polite"></small></div>
   <div class="heading-actions"><button type="button" class="secondary" data-refresh>Обновить</button><button class="primary" data-dialog="create-dialog">+ Добавить клиента</button></div></section>
 {% if dashboard %}
-<section class="stats">
+<section class="stats dashboard-stats">
   <article><span>Статус сервиса</span><strong class="status {{ 'ok' if dashboard.service_active else 'bad' }}">{{ 'Работает' if dashboard.service_active else 'Остановлен' }}</strong></article>
   <article><span>Всего клиентов</span><strong>{{ dashboard.peers|length }}</strong></article>
   <article><span>Активны сейчас</span><strong>{{ dashboard.active_count }}</strong></article>
   <article><span>Получено / передано</span><strong>{{ dashboard.received_bytes|filesize }} / {{ dashboard.sent_bytes|filesize }}</strong></article>
 </section>
-<section class="service-line"><span>Аптайм сервера: <b>{{ dashboard.server_uptime }}</b></span><span>awg0: <b>{{ dashboard.interface_uptime }}</b></span>
+<section class="service-line dashboard-service"><span>Аптайм сервера: <b>{{ dashboard.server_uptime }}</b></span><span>awg0: <b>{{ dashboard.interface_uptime }}</b></span>
   <form method="post" action="{{ url_for('restart_interface') }}" data-confirm="Перезапустить awg0? Активные соединения могут кратковременно прерваться."><input type="hidden" name="csrf_token" value="{{ csrf_token }}"><button class="secondary">Перезапустить</button></form></section>
-<section class="panel system-panel">
-  <div class="panel-head"><div><h2>Система</h2><p>Состояние VPS и AmneziaWG</p></div></div>
-  <div class="system-metrics">
-    <article><span>CPU и нагрузка</span><strong>{{ dashboard.system.cpu_count or '—' }} ядер</strong><small>Load average: {{ '%.2f'|format(dashboard.system.load_1) }} / {{ '%.2f'|format(dashboard.system.load_5) }} / {{ '%.2f'|format(dashboard.system.load_15) }}</small></article>
-    <article><span>Оперативная память</span><strong>{% if dashboard.system.memory_total %}{{ dashboard.system.memory_used|filesize }} / {{ dashboard.system.memory_total|filesize }}{% else %}Недоступно{% endif %}</strong><div class="meter"><i style="width:{{ dashboard.system.memory_percent }}%"></i></div><small>{{ dashboard.system.memory_percent }}% использовано</small></article>
-    <article><span>Диск</span><strong>{% if dashboard.system.disk_total %}{{ dashboard.system.disk_used|filesize }} / {{ dashboard.system.disk_total|filesize }}{% else %}Недоступно{% endif %}</strong><div class="meter"><i style="width:{{ dashboard.system.disk_percent }}%"></i></div><small>{{ dashboard.system.disk_percent }}% использовано</small></article>
-    <article><span>Версия AmneziaWG</span><strong class="version-text">{{ dashboard.system.awg_version }}</strong></article>
-  </div>
-</section>
 <section class="panel">
   <div class="panel-head"><div><h2>Клиенты</h2><p>Конфигурации и состояние соединений</p></div><div class="table-tools"><input id="peer-search" type="search" placeholder="Имя, IP, метка…" aria-label="Поиск клиентов"><select id="peer-status" aria-label="Фильтр по статусу"><option value="">Все статусы</option><option value="active">Активные</option><option value="offline">Неактивные</option><option value="never">Не подключались</option><option value="disabled">Отключённые</option></select></div></div>
   <div class="table-scroll"><table id="peer-table"><thead><tr><th data-sort="name">Клиент</th><th data-sort="ip" data-sort-type="ip">IP в туннеле</th><th>Endpoint</th><th data-sort="status" data-sort-type="status">Статус</th><th data-sort="handshake" data-sort-type="number">Последняя активность</th><th data-sort="traffic" data-sort-type="number">Трафик ↓ / ↑</th><th>Действия</th></tr></thead><tbody>
@@ -31,6 +22,15 @@
   </tbody></table></div>
   <p class="table-summary" id="peer-summary" aria-live="polite"></p>
 </section>
+<details class="panel system-panel">
+  <summary><strong>Система</strong><span>CPU: {{ dashboard.system.cpu_count or '—' }} · RAM: {{ dashboard.system.memory_percent }}% · Диск: {{ dashboard.system.disk_percent }}% · Load: {{ '%.2f'|format(dashboard.system.load_1) }}</span><b class="system-toggle">Показать</b></summary>
+  <div class="system-metrics">
+    <article><span>CPU и нагрузка</span><strong>{{ dashboard.system.cpu_count or '—' }} ядер</strong><small>Load average: {{ '%.2f'|format(dashboard.system.load_1) }} / {{ '%.2f'|format(dashboard.system.load_5) }} / {{ '%.2f'|format(dashboard.system.load_15) }}</small></article>
+    <article><span>Оперативная память</span><strong>{% if dashboard.system.memory_total %}{{ dashboard.system.memory_used|filesize }} / {{ dashboard.system.memory_total|filesize }}{% else %}Недоступно{% endif %}</strong><div class="meter"><i style="width:{{ dashboard.system.memory_percent }}%"></i></div><small>{{ dashboard.system.memory_percent }}% использовано</small></article>
+    <article><span>Диск</span><strong>{% if dashboard.system.disk_total %}{{ dashboard.system.disk_used|filesize }} / {{ dashboard.system.disk_total|filesize }}{% else %}Недоступно{% endif %}</strong><div class="meter"><i style="width:{{ dashboard.system.disk_percent }}%"></i></div><small>{{ dashboard.system.disk_percent }}% использовано</small></article>
+    <article><span>Версия AmneziaWG</span><strong class="version-text">{{ dashboard.system.awg_version }}</strong></article>
+  </div>
+</details>
 {% endif %}
 <dialog id="create-dialog"><form method="post" action="{{ url_for('create_client') }}" class="stack"><div class="dialog-head"><h2>Новый клиент</h2><button type="button" data-close>×</button></div><input type="hidden" name="csrf_token" value="{{ csrf_token }}"><label>Имя клиента<input name="name" pattern="[A-Za-z0-9_-]{1,64}" maxlength="64" required placeholder="phone_alex"></label><small>Латинские буквы, цифры, дефис и подчёркивание</small><button class="primary">Создать клиента</button></form></dialog>
 <dialog id="actions-dialog"><div class="dialog-head"><h2 id="action-title">Клиент</h2><button type="button" data-close>×</button></div>

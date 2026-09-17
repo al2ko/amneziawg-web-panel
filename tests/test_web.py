@@ -100,6 +100,8 @@ def test_full_web_flow(tmp_path):
     assert 'data-refresh' in dashboard.get_data(as_text=True)
     assert "Обновить" in dashboard.get_data(as_text=True)
     assert "Система" in dashboard.get_data(as_text=True)
+    assert '<details class="panel system-panel">' in dashboard.get_data(as_text=True)
+    assert dashboard.get_data(as_text=True).index('id="peer-table"') < dashboard.get_data(as_text=True).index('<details class="panel system-panel">')
     assert 'id="peer-status"' in dashboard.get_data(as_text=True)
     assert "Личный телефон" in dashboard.get_data(as_text=True)
     csrf = extract_csrf(dashboard)
