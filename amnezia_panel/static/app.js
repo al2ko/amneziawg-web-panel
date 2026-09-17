@@ -107,7 +107,6 @@ if (peerTable) {
   const rows = [...peerTable.tBodies[0].querySelectorAll("tr[data-search]")];
   const search = document.getElementById("peer-search");
   const status = document.getElementById("peer-status");
-  const compact = document.getElementById("compact-mode");
   const summary = document.getElementById("peer-summary");
   let saved = {};
   try {
@@ -117,8 +116,6 @@ if (peerTable) {
   }
   search.value = typeof saved.search === "string" ? saved.search : "";
   if ([...status.options].some((option) => option.value === saved.status)) status.value = saved.status;
-  compact.checked = saved.compact === true;
-  peerTable.classList.toggle("compact", compact.checked);
   let sortKey = typeof saved.sortKey === "string" ? saved.sortKey : "";
   let sortDirection = saved.sortDirection === "desc" ? "desc" : "asc";
 
@@ -127,7 +124,6 @@ if (peerTable) {
       window.sessionStorage.setItem(stateKey, JSON.stringify({
         search: search.value,
         status: status.value,
-        compact: compact.checked,
         sortKey,
         sortDirection,
       }));
@@ -175,10 +171,6 @@ if (peerTable) {
 
   search.addEventListener("input", () => applyFilters());
   status.addEventListener("change", () => applyFilters());
-  compact.addEventListener("change", () => {
-    peerTable.classList.toggle("compact", compact.checked);
-    saveState();
-  });
   peerTable.querySelectorAll("th[data-sort]").forEach((header) => header.addEventListener("click", () => {
     const direction = sortKey === header.dataset.sort && sortDirection === "asc" ? "desc" : "asc";
     sortRows(header, direction);
