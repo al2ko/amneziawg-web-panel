@@ -94,7 +94,8 @@ def test_full_web_flow(tmp_path):
     dashboard = client.get("/")
     assert dashboard.status_code == 200
     assert "phone" in dashboard.get_data(as_text=True)
-    assert "QR и текст" in dashboard.get_data(as_text=True)
+    assert "QR и conf" in dashboard.get_data(as_text=True)
+    assert "↓ conf" not in dashboard.get_data(as_text=True)
     assert 'data-auto-refresh="60000"' in dashboard.get_data(as_text=True)
     assert 'data-refresh' in dashboard.get_data(as_text=True)
     assert "Обновить" in dashboard.get_data(as_text=True)
