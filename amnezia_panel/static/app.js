@@ -103,11 +103,39 @@ document.addEventListener("submit", (event) => {
 
 const peerTable = document.getElementById("peer-table");
 if (peerTable) {
+  const stateKey = "amnezia-peer-table-state";
   const rows = [...peerTable.tBodies[0].querySelectorAll("tr[data-search]")];
   const search = document.getElementById("peer-search");
   const status = document.getElementById("peer-status");
+  const compact = document.getElementById("compact-mode");
   const summary = document.getElementById("peer-summary");
-  const applyFilters = () => {
+  let saved = {};
+  try {
+    saved = JSON.parse(window.sessionStorage.getItem(stateKey) || "{}");
+  } catch (storageError) {
+    saved = {};
+  }
+  search.value = typeof saved.search === "string" ? saved.search : "";
+  if ([...status.options].some((option) => option.value === saved.status)) status.value = saved.status;
+  compact.checked = saved.compact === true;
+  peerTable.classList.toggle("compact", compact.checked);
+  let sortKey = typeof saved.sortKey === "string" ? saved.sortKey : "";
+  let sortDirection = saved.sortDirection === "desc" ? "desc" : "asc";
+
+  const saveState = () => {
+    try {
+      window.sessionStorage.setItem(stateKey, JSON.stringify({
+        search: search.value,
+        status: status.value,
+        compact: compact.checked,
+        sortKey,
+        sortDirection,
+      }));
+    } catch (storageError) {
+      // The table remains usable when browser storage is unavailable.
+    }
+  };
+  const applyFilters = (persist = true) => {
     const needle = search.value.trim().toLowerCase();
     let visible = 0;
     rows.forEach((row) => {
@@ -115,10 +143,8 @@ if (peerTable) {
       if (!row.hidden) visible += 1;
     });
     summary.textContent = `Показано ${visible} из ${rows.length}`;
+    if (persist) saveState();
   };
-  search.addEventListener("input", applyFilters);
-  status.addEventListener("change", applyFilters);
-  applyFilters();
 
   const statusOrder = {active: 0, offline: 1, never: 2, disabled: 3};
   const compare = (left, right, type) => {
@@ -130,20 +156,53 @@ if (peerTable) {
     if (type === "status") return statusOrder[left] - statusOrder[right];
     return (left || "").localeCompare(right || "", "ru");
   };
-  peerTable.querySelectorAll("th[data-sort]").forEach((header) => header.addEventListener("click", () => {
-    const direction = header.dataset.direction === "asc" ? -1 : 1;
+  const sortRows = (header, direction, persist = true) => {
     const key = header.dataset.sort;
     const type = header.dataset.sortType || "text";
-    rows.sort((left, right) => direction * compare(left.dataset[key], right.dataset[key], type));
+    const multiplier = direction === "asc" ? 1 : -1;
+    rows.sort((left, right) => multiplier * compare(left.dataset[key], right.dataset[key], type));
     rows.forEach((row) => peerTable.tBodies[0].appendChild(row));
     peerTable.querySelectorAll("th[data-sort]").forEach((item) => {
       item.dataset.direction = "";
       item.setAttribute("aria-sort", "none");
     });
-    header.dataset.direction = direction === 1 ? "asc" : "desc";
-    header.setAttribute("aria-sort", direction === 1 ? "ascending" : "descending");
+    sortKey = key;
+    sortDirection = direction;
+    header.dataset.direction = direction;
+    header.setAttribute("aria-sort", direction === "asc" ? "ascending" : "descending");
+    if (persist) saveState();
+  };
+
+  search.addEventListener("input", () => applyFilters());
+  status.addEventListener("change", () => applyFilters());
+  compact.addEventListener("change", () => {
+    peerTable.classList.toggle("compact", compact.checked);
+    saveState();
+  });
+  peerTable.querySelectorAll("th[data-sort]").forEach((header) => header.addEventListener("click", () => {
+    const direction = sortKey === header.dataset.sort && sortDirection === "asc" ? "desc" : "asc";
+    sortRows(header, direction);
   }));
+  const savedHeader = [...peerTable.querySelectorAll("th[data-sort]")].find((header) => header.dataset.sort === sortKey);
+  if (savedHeader) sortRows(savedHeader, sortDirection, false);
+  applyFilters(false);
 }
+
+const relativeTime = new Intl.RelativeTimeFormat("ru", {numeric: "auto"});
+const updateRelativeTimes = () => {
+  const now = Math.floor(Date.now() / 1000);
+  document.querySelectorAll("[data-relative-time]").forEach((element) => {
+    const difference = Number(element.dataset.timestamp) - now;
+    const absolute = Math.abs(difference);
+    if (absolute < 60) element.textContent = "только что";
+    else if (absolute < 3600) element.textContent = relativeTime.format(Math.round(difference / 60), "minute");
+    else if (absolute < 86400) element.textContent = relativeTime.format(Math.round(difference / 3600), "hour");
+    else if (absolute < 2592000) element.textContent = relativeTime.format(Math.round(difference / 86400), "day");
+    else element.textContent = relativeTime.format(Math.round(difference / 2592000), "month");
+  });
+};
+updateRelativeTimes();
+window.setInterval(updateRelativeTimes, 30000);
 
 const auditTable = document.getElementById("audit-table");
 if (auditTable) {
@@ -180,11 +239,23 @@ if (autoRefresh) {
   const status = document.querySelector("[data-refresh-status]");
   const updated = new Intl.DateTimeFormat("ru-RU", {timeZone: "Europe/Moscow", hour: "2-digit", minute: "2-digit", second: "2-digit"}).format(new Date());
   let remaining = Math.ceil(interval / 1000);
-  const renderStatus = () => { status.textContent = `Обновлено ${updated} МСК · следующее обновление через ${remaining} с`; };
+  const dialogIsOpen = () => document.querySelector("dialog[open]") !== null;
+  const renderStatus = () => {
+    status.textContent = dialogIsOpen()
+      ? `Обновлено ${updated} МСК · автообновление приостановлено`
+      : `Обновлено ${updated} МСК · следующее обновление через ${remaining} с`;
+  };
   renderStatus();
   window.setInterval(() => {
+    if (dialogIsOpen()) {
+      renderStatus();
+      return;
+    }
     remaining = Math.max(0, remaining - 1);
+    if (remaining === 0) {
+      window.location.reload();
+      return;
+    }
     renderStatus();
   }, 1000);
-  window.setTimeout(() => window.location.reload(), interval);
 }

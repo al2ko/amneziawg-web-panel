@@ -40,7 +40,7 @@ class FakeAwg:
 
     def dashboard(self):
         return Dashboard(True, "up 1 hour", "активен", [PeerView(
-            "phone", "PUBLIC", "10.8.1.2", status="active", notes="Личный телефон", tags="личный, телефон",
+            "phone", "PUBLIC", "10.8.1.2", latest_handshake=1, status="active", notes="Личный телефон", tags="личный, телефон",
         )])
 
     def create_peer(self, name):
@@ -103,6 +103,8 @@ def test_full_web_flow(tmp_path):
     assert '<details class="panel system-panel">' in dashboard.get_data(as_text=True)
     assert dashboard.get_data(as_text=True).index('id="peer-table"') < dashboard.get_data(as_text=True).index('<details class="panel system-panel">')
     assert 'id="peer-status"' in dashboard.get_data(as_text=True)
+    assert 'id="compact-mode"' in dashboard.get_data(as_text=True)
+    assert 'data-relative-time data-timestamp="1"' in dashboard.get_data(as_text=True)
     assert "Личный телефон" in dashboard.get_data(as_text=True)
     csrf = extract_csrf(dashboard)
     preview = client.get("/clients/phone/artifacts")
