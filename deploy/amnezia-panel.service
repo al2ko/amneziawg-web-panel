@@ -1,0 +1,30 @@
+[Unit]
+Description=AmneziaWG administration panel
+After=network-online.target awg-quick@awg0.service
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=amnezia-panel
+Group=amnezia-panel
+WorkingDirectory=/opt/amnezia-panel
+EnvironmentFile=/etc/amnezia-panel.env
+Environment=TZ=Europe/Moscow
+ExecStart=/opt/amnezia-panel/.venv/bin/gunicorn --workers 2 --threads 4 --bind 0.0.0.0:8080 --access-logfile - --error-logfile - "amnezia_panel:create_app()"
+Restart=on-failure
+RestartSec=3
+TimeoutStopSec=20
+AmbientCapabilities=CAP_NET_ADMIN
+# BUG_FIX_CONTEXT: sudo внутри sandbox не мог сменить UID/GID и обслужить root-owned файлы при bounding set только CAP_NET_ADMIN; дополнительные права не выдаются Gunicorn через AmbientCapabilities.
+CapabilityBoundingSet=CAP_NET_ADMIN CAP_SETUID CAP_SETGID CAP_DAC_OVERRIDE CAP_FOWNER
+NoNewPrivileges=false
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=read-only
+ReadWritePaths=/var/lib/amnezia-panel /var/log/amnezia-panel /etc/amnezia/amneziawg /root/awg
+ProtectKernelTunables=true
+ProtectControlGroups=true
+RestrictSUIDSGID=true
+
+[Install]
+WantedBy=multi-user.target

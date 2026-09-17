@@ -1,0 +1,4 @@
+# Только фиксированный restart интерфейса; пользовательский ввод в эту команду не подставляется.
+amnezia-panel ALL=(root) NOPASSWD: /usr/bin/systemctl restart awg-quick@awg0.service
+# Helper принимает ровно одно имя по allowlist и сам фиксирует путь/аргументы manage_amneziawg.sh.
+amnezia-panel ALL=(root) NOPASSWD: /usr/local/sbin/amnezia-panel-add

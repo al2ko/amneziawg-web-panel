@@ -1,0 +1,57 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+if [[ "$#" -ne 1 || ! "$1" =~ ^[A-Za-z0-9_-]{1,63}$ ]]; then
+  echo '{"command":"add","ok":false,"error":"invalid client name","rc":2}'
+  exit 2
+fi
+
+# Root boundary: discard caller-controlled environment and expose only the one validated client name.
+client_name="$1"
+
+# BUG_FIX_CONTEXT: Panel-native delete removed canonical peer/artifacts but left manage script key files, causing every same-name re-add to fail as "already exists".
+has_client_artifact=0
+for suffix in .conf .png .vpnuri .vpnuri.png; do
+  if [[ -e "/root/awg/${client_name}${suffix}" ]]; then
+    has_client_artifact=1
+  fi
+done
+stale_private="/root/awg/keys/${client_name}.private"
+stale_public="/root/awg/keys/${client_name}.public"
+stale_expiry="/root/awg/expiry/${client_name}"
+if ! /usr/bin/grep -qxF -- "#_Name = ${client_name}" /etc/amnezia/amneziawg/awg0.conf \
+  && [[ "$has_client_artifact" -eq 0 ]] \
+  && { [[ -e "$stale_private" ]] || [[ -e "$stale_public" ]] || [[ -e "$stale_expiry" ]]; }; then
+  /usr/bin/install -d -m 0700 /root/awg/backups/panel-stale
+  stale_backup=$(/usr/bin/mktemp -d "/root/awg/backups/panel-stale/${client_name}.XXXXXX")
+  for stale_path in "$stale_private" "$stale_public" "$stale_expiry"; do
+    if [[ -e "$stale_path" ]]; then
+      /usr/bin/mv -- "$stale_path" "$stale_backup/"
+    fi
+  done
+fi
+
+set +e
+manage_output=$(/usr/bin/env -i PATH=/usr/sbin:/usr/bin:/sbin:/bin HOME=/root \
+  /usr/bin/bash /root/awg/manage_amneziawg.sh --json --yes add "$client_name")
+manage_rc=$?
+set -e
+
+# BUG_FIX_CONTEXT: manage_amneziawg.sh atomically replaces awg0.conf and chmods artifacts to 0600, dropping the panel ACL after a successful add.
+acl_rc=0
+/usr/bin/setfacl -m u:amnezia-panel:rw -- /etc/amnezia/amneziawg/awg0.conf || acl_rc=1
+for suffix in .conf .png .vpnuri .vpnuri.png; do
+  artifact_path="/root/awg/${client_name}${suffix}"
+  if [[ -e "$artifact_path" ]]; then
+    /usr/bin/setfacl -m u:amnezia-panel:rw -- "$artifact_path" || acl_rc=1
+  fi
+done
+
+printf '%s\n' "$manage_output"
+if [[ "$manage_rc" -ne 0 ]]; then
+  exit "$manage_rc"
+fi
+if [[ "$acl_rc" -ne 0 ]]; then
+  echo "failed to restore panel ACL" >&2
+  exit 1
+fi

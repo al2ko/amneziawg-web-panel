@@ -1,0 +1,10 @@
+PROJECT_NAME           = "AmneziaWG Panel"
+OUTPUT_DIRECTORY       = doxygen_output
+INPUT                  = amnezia_panel tests
+RECURSIVE              = YES
+FILE_PATTERNS          = *.py
+EXTRACT_ALL            = YES
+GENERATE_HTML           = YES
+GENERATE_XML            = YES
+QUIET                   = YES
+EXCLUDE_PATTERNS        = */__pycache__/* */.venv/*
