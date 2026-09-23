@@ -37,6 +37,7 @@ class Settings:
     log_path: Path | None = None
     # BUG_FIX_CONTEXT: Path rewrites a Linux command path with backslashes in Windows tests; argv commands must stay exact strings.
     manage_add_helper: str | None = None
+    manage_regen_helper: str | None = None
 
     @classmethod
     def from_env(cls) -> "Settings":
@@ -60,4 +61,5 @@ class Settings:
             secure_cookie=os.environ.get("AMNEZIA_PANEL_SECURE_COOKIE", "false").lower() == "true",
             log_path=Path(os.environ["AMNEZIA_PANEL_LOG"]) if os.environ.get("AMNEZIA_PANEL_LOG") else None,
             manage_add_helper=os.environ.get("AMNEZIA_PANEL_ADD_HELPER", "/usr/local/sbin/amnezia-panel-add"),
+            manage_regen_helper=os.environ.get("AMNEZIA_PANEL_REGEN_HELPER", "/usr/local/sbin/amnezia-panel-regen"),
         )

@@ -25,6 +25,7 @@ def test_add_helper_privilege_boundary():
     unit = (root / "deploy" / "amnezia-panel.service").read_text(encoding="utf-8")
     sudoers = (root / "deploy" / "amnezia-panel.sudoers").read_text(encoding="utf-8")
     helper = (root / "deploy" / "amnezia-panel-add").read_text(encoding="utf-8")
+    regen_helper = (root / "deploy" / "amnezia-panel-regen").read_text(encoding="utf-8")
 
     assert "AmbientCapabilities=CAP_NET_ADMIN\n" in unit
     assert "Environment=TZ=Europe/Moscow\n" in unit
@@ -32,6 +33,7 @@ def test_add_helper_privilege_boundary():
     required = {"CAP_NET_ADMIN", "CAP_SETUID", "CAP_SETGID", "CAP_DAC_OVERRIDE", "CAP_FOWNER"}
     assert set(bounding_line.split("=", 1)[1].split()) == required
     assert "NOPASSWD: /usr/local/sbin/amnezia-panel-add" in sudoers
+    assert "NOPASSWD: /usr/local/sbin/amnezia-panel-regen" in sudoers
     assert '"$#" -ne 1' in helper
     assert "^[A-Za-z0-9_-]{1,63}$" in helper
     assert "/usr/bin/env -i" in helper
@@ -41,5 +43,10 @@ def test_add_helper_privilege_boundary():
     assert "/root/awg/backups/panel-stale" in helper
     assert "/usr/bin/mktemp -d" in helper
     assert "/usr/bin/mv --" in helper
+    assert '"$#" -ne 1' in regen_helper
+    assert "^[A-Za-z0-9_-]{1,63}$" in regen_helper
+    assert "/usr/bin/env -i" in regen_helper
+    assert '--json --yes regen "$client_name"' in regen_helper
+    assert "for suffix in .conf .png .vpnuri .vpnuri.png" in regen_helper
     print("[IMP:9][test_add_helper_privilege_boundary][VERIFIED] Minimal sudo transition boundary is internally consistent")
 # endregion FUNC_test_add_helper_privilege_boundary

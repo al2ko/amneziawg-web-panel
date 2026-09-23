@@ -37,6 +37,7 @@ class FakeAwg:
     def __init__(self):
         self.artifacts = FakeArtifacts()
         self.created = []
+        self.regenerated = []
 
     def dashboard(self):
         return Dashboard(True, "up 1 hour", "активен", [PeerView(
@@ -48,6 +49,9 @@ class FakeAwg:
 
     def rename_peer(self, public_key, name):
         return None
+
+    def regenerate_peer(self, public_key):
+        self.regenerated.append(public_key)
 
     def disable_peer(self, public_key):
         return None
@@ -106,6 +110,7 @@ def test_full_web_flow(tmp_path):
     assert 'id="compact-mode"' not in dashboard.get_data(as_text=True)
     assert 'id="peer-table" class="compact"' in dashboard.get_data(as_text=True)
     assert 'data-relative-time data-timestamp="1"' in dashboard.get_data(as_text=True)
+    assert "Перегенерировать конфиг" in dashboard.get_data(as_text=True)
     assert "Личный телефон" in dashboard.get_data(as_text=True)
     csrf = extract_csrf(dashboard)
     preview = client.get("/clients/phone/artifacts")
@@ -118,6 +123,11 @@ def test_full_web_flow(tmp_path):
     response = client.post("/clients", data={"name": "tablet_1", "csrf_token": csrf}, follow_redirects=True)
     assert response.status_code == 200
     assert fake_awg.created == ["tablet_1"]
+    regenerated = client.post(
+        "/clients/regenerate", data={"public_key": "PUBLIC", "csrf_token": csrf}, follow_redirects=True,
+    )
+    assert regenerated.status_code == 200
+    assert fake_awg.regenerated == ["PUBLIC"]
     details = client.post(
         "/clients/details",
         data={"public_key": "PUBLIC", "notes": "Основной телефон", "tags": "личный, Москва, личный", "csrf_token": csrf},
@@ -142,6 +152,7 @@ def test_full_web_flow(tmp_path):
     assert "Время (МСК)" in audit.get_data(as_text=True)
     assert " МСК" in audit.get_data(as_text=True)
     assert "Изменение описания" in audit.get_data(as_text=True)
+    assert "Перегенерация конфигурации" in audit.get_data(as_text=True)
     assert 'id="audit-action"' in audit.get_data(as_text=True)
     logout = client.post("/logout", data={"csrf_token": csrf})
     assert logout.status_code == 302

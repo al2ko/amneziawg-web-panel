@@ -89,6 +89,19 @@ class FakeAddHelperRunner:
         )
 
 
+class FakeRegenHelperRunner:
+    def __init__(self):
+        self.calls = []
+
+    def run(self, argv, input_text=None):
+        self.calls.append((list(argv), input_text))
+        name = argv[-1]
+        return (
+            '{"command":"regen","ok":true,"regenerated":1,"failed":0,"reset_routes":false,'
+            f'"results":[{{"name":"{name}","status":"regenerated"}}]}}'
+        )
+
+
 def build_service(tmp_path: Path):
     config_path = tmp_path / "awg0.conf"
     config_path.write_text(SERVER_CONFIG, encoding="utf-8")
@@ -188,6 +201,23 @@ def test_create_peer_via_canonical_helper(tmp_path, caplog):
     assert "#_Name = script_phone\n" not in canonical
     trace = print_critical_logs(caplog)
     assert any("created by canonical script" in line for line in trace)
+
+
+def test_regenerate_peer_via_canonical_helper(tmp_path):
+    service, repository, _ = build_service(tmp_path)
+    service.migrate_existing()
+    service.settings.clients_dir.mkdir()
+    for path in service.artifacts.all_paths("legacy").values():
+        path.write_bytes(b"regenerated")
+    service.settings = replace(service.settings, manage_regen_helper="/usr/local/sbin/amnezia-panel-regen")
+    runner = FakeRegenHelperRunner()
+    service.runner = runner
+
+    result = service.regenerate_peer("LEGACY_PUBLIC")
+
+    assert result == {"name": "legacy", "public_key": "LEGACY_PUBLIC"}
+    assert runner.calls == [(["sudo", "-n", "/usr/local/sbin/amnezia-panel-regen", "legacy"], None)]
+    assert repository.get_client("LEGACY_PUBLIC")["enabled"] == 1
 
 
 def test_middle_peer_removal_and_existing_artifact_discovery(tmp_path):

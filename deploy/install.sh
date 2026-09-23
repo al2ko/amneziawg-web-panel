@@ -64,6 +64,7 @@ if [[ ! -f "${CONFIG_FILE}" ]]; then
     printf 'AMNEZIA_PANEL_INTERFACE=awg0\n'
     printf 'AMNEZIA_PANEL_LOG=%s/panel.log\n' "${LOG_DIR}"
     printf 'AMNEZIA_PANEL_ENDPOINT=%s\n' "${ENDPOINT}"
+    printf 'AMNEZIA_PANEL_REGEN_HELPER=/usr/local/sbin/amnezia-panel-regen\n'
   } >> "${CONFIG_FILE}"
   if [[ -n "${GENERATED_PASSWORD:-}" ]]; then
     install -m 0600 /dev/null "${CREDENTIALS_FILE}"
@@ -79,6 +80,7 @@ fi
 
 install -o root -g root -m 0644 "${SOURCE_DIR}/deploy/amnezia-panel.service" /etc/systemd/system/amnezia-panel.service
 install -o root -g root -m 0755 "${SOURCE_DIR}/deploy/amnezia-panel-add" /usr/local/sbin/amnezia-panel-add
+install -o root -g root -m 0755 "${SOURCE_DIR}/deploy/amnezia-panel-regen" /usr/local/sbin/amnezia-panel-regen
 install -o root -g root -m 0440 "${SOURCE_DIR}/deploy/amnezia-panel.sudoers" /etc/sudoers.d/amnezia-panel
 visudo -cf /etc/sudoers.d/amnezia-panel
 systemctl daemon-reload

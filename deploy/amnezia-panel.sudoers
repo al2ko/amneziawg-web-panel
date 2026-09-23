@@ -2,3 +2,5 @@
 amnezia-panel ALL=(root) NOPASSWD: /usr/bin/systemctl restart awg-quick@awg0.service
 # Helper принимает ровно одно имя по allowlist и сам фиксирует путь/аргументы manage_amneziawg.sh.
 amnezia-panel ALL=(root) NOPASSWD: /usr/local/sbin/amnezia-panel-add
+# Перегенерация сохраняет ключи/IP и обновляет артефакты только одного валидированного клиента.
+amnezia-panel ALL=(root) NOPASSWD: /usr/local/sbin/amnezia-panel-regen

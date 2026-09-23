@@ -320,6 +320,39 @@ class AwgService:
         logger.info("[IMP:9][create_peer][SUCCESS] Client %s created by canonical script at %s", name, tunnel_ip)
         return {"name": name, "public_key": public_key, "tunnel_ip": tunnel_ip}
 
+    def regenerate_peer(self, public_key: str) -> dict:
+        """▶ enabled peer → canonical regen helper → verified client artifacts."""
+        record = self.repository.get_client(public_key)
+        if not record:
+            raise KeyError("Клиент не найден")
+        if not record["enabled"]:
+            raise ValueError("Сначала включите клиента")
+        name = validate_client_name(record["name"])
+        if len(name) > 63:
+            raise ValueError("Скрипт AmneziaWG поддерживает имя длиной не более 63 символов")
+        if self.settings.manage_regen_helper is None:
+            raise CommandError("Regeneration helper is not configured")
+
+        output = self.runner.run(["sudo", "-n", str(self.settings.manage_regen_helper), name])
+        try:
+            payload = json.loads(output)
+        except (json.JSONDecodeError, TypeError) as error:
+            logger.error("[IMP:10][regenerate_peer][INVALID_JSON] Regen helper returned an invalid response")
+            raise CommandError("Regeneration helper returned invalid JSON") from error
+        results = payload.get("results") if isinstance(payload, dict) else None
+        matching = next(
+            (item for item in results if isinstance(item, dict) and item.get("name") == name),
+            None,
+        ) if isinstance(results, list) else None
+        if not isinstance(payload, dict) or payload.get("ok") is not True or not matching or matching.get("status") != "regenerated":
+            raise CommandError("Canonical configuration regeneration was not confirmed")
+        missing = [kind for kind, path in self.artifacts.all_paths(name).items() if not path.is_file()]
+        if missing:
+            logger.error("[IMP:10][regenerate_peer][INCOMPLETE] Missing artifact count=%d", len(missing))
+            raise CommandError("Configuration regeneration produced an incomplete result")
+        logger.info("[IMP:9][regenerate_peer][SUCCESS] Client artifacts regenerated for %s", name)
+        return {"name": name, "public_key": public_key}
+
     def _create_peer_native(self, name: str) -> dict:
         """▶ development fallback → keys+IP → backup/config/runtime → plain artifacts+metadata."""
         if not self.settings.endpoint:

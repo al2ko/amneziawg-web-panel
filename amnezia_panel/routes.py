@@ -179,6 +179,12 @@ def register_routes(app: Flask, settings: Settings, repository: PanelRepository,
 
         return execute_peer_action("client_details", save_details, client_name(key))
 
+    @app.post("/clients/regenerate")
+    @login_required
+    def regenerate_client():
+        key = request.form.get("public_key", "")
+        return execute_peer_action("client_regenerate", lambda: awg.regenerate_peer(key), client_name(key))
+
     @app.get("/clients/<name>/<kind>")
     @login_required
     def download_artifact(name: str, kind: str):

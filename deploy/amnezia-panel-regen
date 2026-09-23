@@ -1,0 +1,31 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+if [[ "$#" -ne 1 || ! "$1" =~ ^[A-Za-z0-9_-]{1,63}$ ]]; then
+  echo '{"command":"regen","ok":false,"error":"invalid client name","rc":2}'
+  exit 2
+fi
+
+client_name="$1"
+set +e
+manage_output=$(/usr/bin/env -i PATH=/usr/sbin:/usr/bin:/sbin:/bin HOME=/root \
+  /usr/bin/bash /root/awg/manage_amneziawg.sh --json --yes regen "$client_name")
+manage_rc=$?
+set -e
+
+acl_rc=0
+for suffix in .conf .png .vpnuri .vpnuri.png; do
+  artifact_path="/root/awg/${client_name}${suffix}"
+  if [[ -e "$artifact_path" ]]; then
+    /usr/bin/setfacl -m u:amnezia-panel:rw -- "$artifact_path" || acl_rc=1
+  fi
+done
+
+printf '%s\n' "$manage_output"
+if [[ "$manage_rc" -ne 0 ]]; then
+  exit "$manage_rc"
+fi
+if [[ "$acl_rc" -ne 0 ]]; then
+  echo "failed to restore panel ACL" >&2
+  exit 1
+fi
