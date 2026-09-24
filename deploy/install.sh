@@ -17,7 +17,8 @@ test -f /etc/amnezia/amneziawg/awg0.conf || { echo "Не найден awg0.conf"
 command -v awg >/dev/null || { echo "Не найдена команда awg" >&2; exit 1; }
 
 apt-get update
-apt-get install -y python3 python3-venv acl
+apt-get install -y python3 python3-venv acl cron
+systemctl enable --now cron.service
 id amnezia-panel >/dev/null 2>&1 || useradd --system --home-dir "${STATE_DIR}" --shell /usr/sbin/nologin amnezia-panel
 install -d -o amnezia-panel -g amnezia-panel -m 0750 "${INSTALL_DIR}" "${STATE_DIR}" "${STATE_DIR}/clients" "${LOG_DIR}"
 cp -a "${SOURCE_DIR}/amnezia_panel" "${SOURCE_DIR}/tools" "${SOURCE_DIR}/requirements.txt" "${INSTALL_DIR}/"
@@ -81,6 +82,7 @@ fi
 install -o root -g root -m 0644 "${SOURCE_DIR}/deploy/amnezia-panel.service" /etc/systemd/system/amnezia-panel.service
 install -o root -g root -m 0755 "${SOURCE_DIR}/deploy/amnezia-panel-add" /usr/local/sbin/amnezia-panel-add
 install -o root -g root -m 0755 "${SOURCE_DIR}/deploy/amnezia-panel-regen" /usr/local/sbin/amnezia-panel-regen
+install -o root -g root -m 0755 "${SOURCE_DIR}/deploy/amnezia-panel-expiry" /usr/local/sbin/amnezia-panel-expiry
 install -o root -g root -m 0440 "${SOURCE_DIR}/deploy/amnezia-panel.sudoers" /etc/sudoers.d/amnezia-panel
 visudo -cf /etc/sudoers.d/amnezia-panel
 systemctl daemon-reload

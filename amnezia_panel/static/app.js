@@ -79,6 +79,8 @@ document.addEventListener("click", (event) => {
     dialog.querySelector("#rename-input").value = action.dataset.name;
     dialog.querySelector("#notes-input").value = action.dataset.notes;
     dialog.querySelector("#tags-input").value = action.dataset.tags;
+    dialog.querySelector("[data-rename-form]").hidden = Boolean(action.dataset.expiresAt);
+    dialog.querySelectorAll("[data-requires-valid]").forEach((form) => { form.hidden = action.dataset.status === "expired"; });
     const enabled = action.dataset.enabled === "1";
     const form = dialog.querySelector("#toggle-form");
     form.action = enabled ? "/clients/disable" : "/clients/enable";
@@ -135,14 +137,17 @@ if (peerTable) {
     const needle = search.value.trim().toLowerCase();
     let visible = 0;
     rows.forEach((row) => {
-      row.hidden = !row.dataset.search.includes(needle) || (status.value && row.dataset.status !== status.value);
+      const statusMatches = !status.value || (status.value === "temporary"
+        ? Number(row.dataset.expiry) > 0 && row.dataset.status !== "expired"
+        : row.dataset.status === status.value);
+      row.hidden = !row.dataset.search.includes(needle) || !statusMatches;
       if (!row.hidden) visible += 1;
     });
     summary.textContent = `Показано ${visible} из ${rows.length}`;
     if (persist) saveState();
   };
 
-  const statusOrder = {active: 0, offline: 1, never: 2, disabled: 3};
+  const statusOrder = {active: 0, offline: 1, never: 2, disabled: 3, expired: 4};
   const compare = (left, right, type) => {
     if (type === "number") return Number(left || 0) - Number(right || 0);
     if (type === "ip") {

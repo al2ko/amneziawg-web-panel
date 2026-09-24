@@ -126,7 +126,8 @@ def register_routes(app: Flask, settings: Settings, repository: PanelRepository,
     @login_required
     def create_client():
         name = request.form.get("name", "")
-        return execute_peer_action("client_create", lambda: awg.create_peer(name), name)
+        duration = request.form.get("duration", "")
+        return execute_peer_action("client_create", lambda: awg.create_peer(name, duration), name)
 
     @app.post("/clients/rename")
     @login_required

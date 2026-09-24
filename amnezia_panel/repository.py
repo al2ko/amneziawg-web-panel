@@ -50,6 +50,7 @@ class PanelRepository:
                     peer_block TEXT NOT NULL DEFAULT '',
                     notes TEXT NOT NULL DEFAULT '',
                     tags TEXT NOT NULL DEFAULT '',
+                    expires_at INTEGER,
                     created_at INTEGER NOT NULL
                 );
                 CREATE TABLE IF NOT EXISTS sessions (
@@ -81,20 +82,22 @@ class PanelRepository:
                 db.execute("ALTER TABLE clients ADD COLUMN notes TEXT NOT NULL DEFAULT ''")
             if "tags" not in columns:
                 db.execute("ALTER TABLE clients ADD COLUMN tags TEXT NOT NULL DEFAULT ''")
+            if "expires_at" not in columns:
+                db.execute("ALTER TABLE clients ADD COLUMN expires_at INTEGER")
 
-    def upsert_client(self, public_key: str, name: str, tunnel_ip: str, enabled: bool = True, peer_block: str = "") -> None:
+    def upsert_client(self, public_key: str, name: str, tunnel_ip: str, enabled: bool = True, peer_block: str = "", expires_at: int | None = None) -> None:
         with self._connect() as db:
             db.execute(
-                """INSERT INTO clients(public_key,name,tunnel_ip,enabled,peer_block,created_at)
-                VALUES(?,?,?,?,?,?) ON CONFLICT(public_key) DO UPDATE SET
+                """INSERT INTO clients(public_key,name,tunnel_ip,enabled,peer_block,created_at,expires_at)
+                VALUES(?,?,?,?,?,?,?) ON CONFLICT(public_key) DO UPDATE SET
                 name=excluded.name,tunnel_ip=excluded.tunnel_ip,enabled=excluded.enabled,
                 peer_block=CASE WHEN excluded.peer_block='' THEN clients.peer_block ELSE excluded.peer_block END""",
-                (public_key, name, tunnel_ip, int(enabled), peer_block, int(time.time())),
+                (public_key, name, tunnel_ip, int(enabled), peer_block, int(time.time()), expires_at),
             )
 
     def get_clients(self) -> dict[str, dict[str, Any]]:
         with self._connect() as db:
-            rows = db.execute("SELECT public_key,name,tunnel_ip,enabled,peer_block,notes,tags FROM clients").fetchall()
+            rows = db.execute("SELECT public_key,name,tunnel_ip,enabled,peer_block,notes,tags,expires_at FROM clients").fetchall()
         return {row["public_key"]: dict(row) for row in rows}
 
     def get_client(self, public_key: str) -> dict[str, Any] | None:
@@ -117,6 +120,10 @@ class PanelRepository:
                 "UPDATE clients SET enabled=?,peer_block=CASE WHEN ?='' THEN peer_block ELSE ? END WHERE public_key=?",
                 (int(enabled), peer_block, peer_block, public_key),
             )
+
+    def set_expiry(self, public_key: str, expires_at: int) -> None:
+        with self._connect() as db:
+            db.execute("UPDATE clients SET expires_at=? WHERE public_key=?", (expires_at, public_key))
 
     def update_client_details(self, public_key: str, notes: str, tags: str) -> None:
         with self._connect() as db:

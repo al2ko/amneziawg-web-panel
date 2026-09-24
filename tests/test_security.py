@@ -88,3 +88,4 @@ def test_existing_database_adds_client_notes_and_tags(tmp_path):
     client = repository.get_client("KEY")
     assert client["notes"] == "Основной телефон"
     assert client["tags"] == "личный"
+    assert client["expires_at"] is None

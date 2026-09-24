@@ -188,6 +188,17 @@ class AwgService:
         self.migrate_existing()
         content = self._read_config()
         metadata = self.repository.get_clients()
+        if self.settings.expiry_helper:
+            try:
+                expiry_data = json.loads(self.runner.run(["sudo", "-n", self.settings.expiry_helper]))
+                if isinstance(expiry_data, dict):
+                    for key, record in metadata.items():
+                        expires_at = expiry_data.get(record["name"])
+                        if type(expires_at) is int and 0 < expires_at < 32503680000 and record["expires_at"] != expires_at:
+                            self.repository.set_expiry(key, expires_at)
+                            record["expires_at"] = expires_at
+            except (CommandError, ValueError):
+                logger.warning("[IMP:8][dashboard][EXPIRY_UNAVAILABLE] Cannot read expiry markers")
         try:
             runtime = parse_runtime_dump(self.runner.run([self.settings.awg_binary, "show", self.settings.interface, "dump"]))
             service_active = True
@@ -204,19 +215,22 @@ class AwgService:
             record = metadata.get(public_key, {})
             stats = runtime.get(public_key, {})
             handshake = int(stats.get("latest_handshake", 0))
-            status = "active" if handshake and now - handshake <= self.ACTIVE_WINDOW else "offline" if handshake else "never"
+            expiry = record.get("expires_at")
+            status = "expired" if expiry and now >= expiry else "active" if handshake and now - handshake <= self.ACTIVE_WINDOW else "offline" if handshake else "never"
             peers.append(PeerView(
                 name=record.get("name") or _peer_name(block, f"client-{index}"), public_key=public_key,
                 tunnel_ip=record.get("tunnel_ip") or _value(block, "AllowedIPs").split("/", 1)[0],
                 endpoint=stats.get("endpoint", ""), latest_handshake=handshake,
                 received_bytes=int(stats.get("received_bytes", 0)), sent_bytes=int(stats.get("sent_bytes", 0)),
-                status=status, enabled=True, notes=record.get("notes", ""), tags=record.get("tags", ""),
+                status=status, enabled=True, notes=record.get("notes", ""), tags=record.get("tags", ""), expires_at=expiry,
             ))
         for public_key, record in metadata.items():
-            if public_key not in active_keys and not record["enabled"]:
+            expiry = record.get("expires_at")
+            if public_key not in active_keys and (not record["enabled"] or expiry and now >= expiry):
                 peers.append(PeerView(
-                    record["name"], public_key, record["tunnel_ip"], status="disabled", enabled=False,
-                    notes=record.get("notes", ""), tags=record.get("tags", ""),
+                    record["name"], public_key, record["tunnel_ip"],
+                    status="expired" if expiry and now >= expiry else "disabled", enabled=False,
+                    notes=record.get("notes", ""), tags=record.get("tags", ""), expires_at=expiry,
                 ))
         try:
             server_uptime = self.runner.run(["uptime", "-p"])
@@ -275,21 +289,27 @@ class AwgService:
                 return str(candidate)
         raise RuntimeError("В адресном пространстве нет свободных IP")
 
-    def create_peer(self, name: str) -> dict:
+    EXPIRY_DURATIONS = {"", "1h", "12h", "1d", "7d", "30d", "4w"}
+
+    def create_peer(self, name: str, duration: str = "") -> dict:
         """▶ valid unique name → canonical helper or native dev fallback → artifacts+metadata."""
         name = validate_client_name(name)
+        if duration not in self.EXPIRY_DURATIONS:
+            raise ValueError("Недопустимый срок действия клиента")
         if self.repository.find_by_name(name) or any(path.exists() for path in self.artifacts.all_paths(name).values()):
             raise ValueError("Клиент с таким именем уже существует")
         if self.settings.manage_add_helper is not None:
-            return self._create_peer_via_helper(name)
+            return self._create_peer_via_helper(name, duration)
+        if duration:
+            raise ValueError("Для временного клиента требуется штатный helper AmneziaWG")
         return self._create_peer_native(name)
 
-    def _create_peer_via_helper(self, name: str) -> dict:
+    def _create_peer_via_helper(self, name: str, duration: str = "") -> dict:
         """▶ validated name → fixed sudo helper argv → verified JSON/config/artifacts → metadata."""
         if len(name) > 63:
             raise ValueError("Скрипт AmneziaWG поддерживает имя длиной не более 63 символов")
         helper = str(self.settings.manage_add_helper)
-        output = self.runner.run(["sudo", "-n", helper, name])
+        output = self.runner.run(["sudo", "-n", helper, name] + ([duration] if duration else []))
         try:
             payload = json.loads(output)
         except (json.JSONDecodeError, TypeError) as error:
@@ -303,6 +323,9 @@ class AwgService:
         if not isinstance(payload, dict) or payload.get("ok") is not True or not matching or matching.get("status") != "created":
             logger.error("[IMP:10][_create_peer_via_helper][REJECTED] Canonical script did not confirm client creation")
             raise CommandError("Canonical client creation was not confirmed")
+        expiry = matching.get("expires_at")
+        if duration and (not isinstance(expiry, int) or isinstance(expiry, bool) or expiry <= int(time.time())):
+            raise CommandError("Срок действия клиента не подтверждён штатным скриптом")
 
         content = self._read_config()
         peer_block = next((block for block in _section_blocks(content, "Peer") if _peer_name(block, "") == name), "")
@@ -316,7 +339,7 @@ class AwgService:
                 len(missing),
             )
             raise CommandError("Canonical client creation produced an incomplete result")
-        self.repository.upsert_client(public_key, name, tunnel_ip, True, peer_block)
+        self.repository.upsert_client(public_key, name, tunnel_ip, True, peer_block, expires_at=expiry if duration else None)
         logger.info("[IMP:9][create_peer][SUCCESS] Client %s created by canonical script at %s", name, tunnel_ip)
         return {"name": name, "public_key": public_key, "tunnel_ip": tunnel_ip}
 
@@ -327,6 +350,8 @@ class AwgService:
             raise KeyError("Клиент не найден")
         if not record["enabled"]:
             raise ValueError("Сначала включите клиента")
+        if record["expires_at"] and record["expires_at"] <= int(time.time()):
+            raise ValueError("Срок действия клиента истёк")
         name = validate_client_name(record["name"])
         if len(name) > 63:
             raise ValueError("Скрипт AmneziaWG поддерживает имя длиной не более 63 символов")
@@ -396,6 +421,8 @@ class AwgService:
         record = self.repository.get_client(public_key)
         if not record:
             raise KeyError("Клиент не найден")
+        if record["expires_at"]:
+            raise ValueError("Временного клиента нельзя переименовать: это нарушит автоматическое удаление")
         existing = self.repository.find_by_name(new_name)
         if existing and existing["public_key"] != public_key:
             raise ValueError("Имя уже используется")
@@ -435,6 +462,8 @@ class AwgService:
         record = self.repository.get_client(public_key)
         if not record or record["enabled"] or not record["peer_block"]:
             raise ValueError("Отключённый клиент не найден")
+        if record["expires_at"] and record["expires_at"] <= int(time.time()):
+            raise ValueError("Срок действия клиента истёк")
         content = self._read_config()
         if any(_value(block, "PublicKey") == public_key for block in _section_blocks(content, "Peer")):
             raise ValueError("Клиент уже присутствует в конфигурации")
@@ -454,7 +483,8 @@ class AwgService:
         if not record:
             raise KeyError("Клиент не найден")
         content = self._read_config()
-        if record["enabled"]:
+        in_config = any(_value(block, "PublicKey") == public_key for block in _section_blocks(content, "Peer"))
+        if record["enabled"] and in_config:
             content, _ = self._remove_peer(content, public_key)
             backup = self._write_config(content)
             try:
@@ -462,6 +492,8 @@ class AwgService:
             except Exception:
                 shutil.copy2(backup, self.settings.config_path)
                 raise
+        elif record["enabled"] and not (record["expires_at"] and record["expires_at"] <= int(time.time())):
+            raise KeyError("Клиент не найден в конфигурации")
         self.artifacts.delete(record["name"])
         self.repository.delete_client(public_key)
         logger.info("[IMP:9][delete_peer][SUCCESS] Client removed")

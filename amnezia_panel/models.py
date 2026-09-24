@@ -29,6 +29,7 @@ class PeerView:
     enabled: bool = True
     notes: str = ""
     tags: str = ""
+    expires_at: int | None = None
 
 
 @dataclass(slots=True)

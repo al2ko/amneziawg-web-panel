@@ -4,3 +4,5 @@ amnezia-panel ALL=(root) NOPASSWD: /usr/bin/systemctl restart awg-quick@awg0.ser
 amnezia-panel ALL=(root) NOPASSWD: /usr/local/sbin/amnezia-panel-add
 # Перегенерация сохраняет ключи/IP и обновляет артефакты только одного валидированного клиента.
 amnezia-panel ALL=(root) NOPASSWD: /usr/local/sbin/amnezia-panel-regen
+# Чтение root-owned expiry-меток для клиентов, созданных и вне панели.
+amnezia-panel ALL=(root) NOPASSWD: /usr/local/sbin/amnezia-panel-expiry

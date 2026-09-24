@@ -1,0 +1,23 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+if [[ "$#" -ne 0 ]]; then
+  exit 2
+fi
+
+expiry_dir=/root/awg/expiry
+printf '{'
+first=1
+if [[ -d "$expiry_dir" ]]; then
+  for path in "$expiry_dir"/*; do
+    [[ -f "$path" && ! -L "$path" ]] || continue
+    name="${path##*/}"
+    [[ "$name" =~ ^[A-Za-z0-9_-]{1,63}$ ]] || continue
+    timestamp=$(head -c 24 -- "$path")
+    [[ "$timestamp" =~ ^[0-9]{1,20}$ ]] || continue
+    if [[ "$first" -eq 0 ]]; then printf ','; fi
+    first=0
+    printf '"%s":%s' "$name" "$timestamp"
+  done
+fi
+printf '}\n'

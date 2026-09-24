@@ -18,8 +18,10 @@ import time
 from dataclasses import replace
 from pathlib import Path
 
+import pytest
+
 from amnezia_panel.artifacts import ArtifactService
-from amnezia_panel.awg import AwgService, parse_runtime_dump
+from amnezia_panel.awg import AwgService, CommandError, parse_runtime_dump
 from amnezia_panel.config import Settings
 from amnezia_panel.repository import PanelRepository
 
@@ -68,14 +70,16 @@ class FakeRunner:
 
 
 class FakeAddHelperRunner:
-    def __init__(self, config_path: Path, clients_dir: Path):
+    def __init__(self, config_path: Path, clients_dir: Path, confirm_expiry: bool = True):
         self.config_path = config_path
         self.clients_dir = clients_dir
         self.calls = []
+        self.confirm_expiry = confirm_expiry
 
     def run(self, argv, input_text=None):
         self.calls.append((list(argv), input_text))
-        name = argv[-1]
+        name = argv[3]
+        duration = argv[4] if len(argv) == 5 else ""
         peer = f"[Peer]\n#_Name = {name}\nPublicKey = SCRIPT_PUBLIC\nPresharedKey = SCRIPT_PSK\nAllowedIPs = 10.8.1.3/32\n"
         self.config_path.write_text(self.config_path.read_text(encoding="utf-8").rstrip() + "\n\n" + peer, encoding="utf-8")
         self.clients_dir.mkdir(parents=True, exist_ok=True)
@@ -85,7 +89,7 @@ class FakeAddHelperRunner:
         (self.clients_dir / f"{name}.vpnuri.png").write_bytes(b"vpnuri-qr")
         return (
             '{"command":"add","ok":true,"added":1,"failed":0,"applied":true,'
-            f'"results":[{{"name":"{name}","status":"created"}}]}}'
+            f'"results":[{{"name":"{name}","status":"created","expires_at":{2000000000 if duration and self.confirm_expiry else "null"}}}]}}'
         )
 
 
@@ -201,6 +205,59 @@ def test_create_peer_via_canonical_helper(tmp_path, caplog):
     assert "#_Name = script_phone\n" not in canonical
     trace = print_critical_logs(caplog)
     assert any("created by canonical script" in line for line in trace)
+
+
+def test_temporary_peer_expiry_and_cron_removal(tmp_path):
+    service, repository, _ = build_service(tmp_path)
+    service.settings = replace(service.settings, manage_add_helper="/usr/local/sbin/amnezia-panel-add")
+    helper_runner = FakeAddHelperRunner(service.settings.config_path, service.settings.clients_dir)
+    service.runner = helper_runner
+    service.create_peer("guest", "7d")
+    assert helper_runner.calls == [(["sudo", "-n", "/usr/local/sbin/amnezia-panel-add", "guest", "7d"], None)]
+    assert repository.get_client("SCRIPT_PUBLIC")["expires_at"] == 2000000000
+    service.runner = FakeRunner()
+    assert service.dashboard().peers[-1].expires_at == 2000000000
+    with pytest.raises(ValueError, match="Временного клиента"):
+        service.rename_peer("SCRIPT_PUBLIC", "renamed")
+    with pytest.raises(ValueError, match="Недопустимый срок"):
+        service.create_peer("unsafe", "999d")
+    assert not any(call[0][-1] == "999d" for call in helper_runner.calls)
+
+    repository.set_expiry("SCRIPT_PUBLIC", int(time.time()) - 1)
+    service.settings.config_path.write_text(SERVER_CONFIG, encoding="utf-8")  # cron removed the peer and files
+    assert service.dashboard().peers[-1].status == "expired"
+    with pytest.raises(ValueError, match="истёк"):
+        service.regenerate_peer("SCRIPT_PUBLIC")
+    repository.set_enabled("SCRIPT_PUBLIC", False)
+    with pytest.raises(ValueError, match="истёк"):
+        service.enable_peer("SCRIPT_PUBLIC")
+    service.delete_peer("SCRIPT_PUBLIC")
+    assert repository.get_client("SCRIPT_PUBLIC") is None
+
+
+def test_dashboard_imports_external_expiry_markers(tmp_path):
+    service, repository, _ = build_service(tmp_path)
+    service.settings = replace(service.settings, expiry_helper="/usr/local/sbin/amnezia-panel-expiry")
+
+    class ExpiryRunner(FakeRunner):
+        def run(self, argv, input_text=None):
+            if argv == ["sudo", "-n", "/usr/local/sbin/amnezia-panel-expiry"]:
+                return '{"legacy":2000000000}'
+            return super().run(argv, input_text)
+
+    service.runner = ExpiryRunner()
+    dashboard = service.dashboard()
+    assert dashboard.peers[0].expires_at == 2000000000
+    assert repository.get_client("LEGACY_PUBLIC")["expires_at"] == 2000000000
+
+
+def test_temporary_creation_requires_confirmed_expiry(tmp_path):
+    service, repository, _ = build_service(tmp_path)
+    service.settings = replace(service.settings, manage_add_helper="/usr/local/sbin/amnezia-panel-add")
+    service.runner = FakeAddHelperRunner(service.settings.config_path, service.settings.clients_dir, confirm_expiry=False)
+    with pytest.raises(CommandError, match="Срок действия"):
+        service.create_peer("guest", "1h")
+    assert repository.get_client("SCRIPT_PUBLIC") is None
 
 
 def test_regenerate_peer_via_canonical_helper(tmp_path):

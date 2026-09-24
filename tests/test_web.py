@@ -37,15 +37,17 @@ class FakeAwg:
     def __init__(self):
         self.artifacts = FakeArtifacts()
         self.created = []
+        self.durations = []
         self.regenerated = []
 
     def dashboard(self):
         return Dashboard(True, "up 1 hour", "активен", [PeerView(
-            "phone", "PUBLIC", "10.8.1.2", latest_handshake=1, status="active", notes="Личный телефон", tags="личный, телефон",
+            "phone", "PUBLIC", "10.8.1.2", latest_handshake=1, status="active", notes="Личный телефон", tags="личный, телефон", expires_at=2000000000,
         )])
 
-    def create_peer(self, name):
+    def create_peer(self, name, duration=""):
         self.created.append(name)
+        self.durations.append(duration)
 
     def rename_peer(self, public_key, name):
         return None
@@ -111,6 +113,9 @@ def test_full_web_flow(tmp_path):
     assert 'id="peer-table" class="compact"' in dashboard.get_data(as_text=True)
     assert 'data-relative-time data-timestamp="1"' in dashboard.get_data(as_text=True)
     assert "Перегенерировать конфиг" in dashboard.get_data(as_text=True)
+    assert "Временный" in dashboard.get_data(as_text=True)
+    assert 'name="duration"' in dashboard.get_data(as_text=True)
+    assert 'data-expiry="2000000000"' in dashboard.get_data(as_text=True)
     assert "Личный телефон" in dashboard.get_data(as_text=True)
     csrf = extract_csrf(dashboard)
     preview = client.get("/clients/phone/artifacts")
@@ -120,9 +125,10 @@ def test_full_web_flow(tmp_path):
     assert preview_payload["variants"][1]["text"] == "vpn://ENCRYPTED"
     assert client.get("/clients/unsafe%20name/artifacts").status_code == 404
     assert client.post("/clients", data={"name": "unsafe name"}).status_code == 400
-    response = client.post("/clients", data={"name": "tablet_1", "csrf_token": csrf}, follow_redirects=True)
+    response = client.post("/clients", data={"name": "tablet_1", "duration": "7d", "csrf_token": csrf}, follow_redirects=True)
     assert response.status_code == 200
     assert fake_awg.created == ["tablet_1"]
+    assert fake_awg.durations == ["7d"]
     regenerated = client.post(
         "/clients/regenerate", data={"public_key": "PUBLIC", "csrf_token": csrf}, follow_redirects=True,
     )
