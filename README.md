@@ -33,15 +33,15 @@ sudo ufw allow from 198.51.100.42 to any port 8080 proto tcp
 
 ### Вариант 1 — из GitHub
 
-Когда у проекта появится адрес GitHub, подставьте его вместо `АДРЕС_GITHUB_РЕПОЗИТОРИЯ`:
+На VPS клонируйте репозиторий и запустите установщик:
 
 ```bash
-git clone АДРЕС_GITHUB_РЕПОЗИТОРИЯ amnezia-panel-src
+git clone https://github.com/al2ko/amneziawg-web-panel.git amnezia-panel-src
 cd amnezia-panel-src
 sudo bash deploy/install.sh
 ```
 
-Адрес репозитория пока не указан. Скачивание **одного** установочного скрипта через `curl` не заменяет клонирование проекта.
+Скачивание **одного** установочного скрипта через `curl` не заменяет клонирование проекта.
 
 ### Вариант 2 — передать проект с компьютера без GitHub
 
